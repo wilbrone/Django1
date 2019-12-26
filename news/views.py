@@ -1,10 +1,11 @@
 from django.shortcuts import render
-from django.http  import HttpResponse, Http404
+from django.http  import HttpResponse, Http404, HttpResponseRedirect
 import datetime as dt
 from django.shortcuts import render,redirect
+from django.contrib.auth.decorators import login_required
 
 from .models import Article
-
+from .email import send_welcome_email
 # Create your views here.
 
 def welcome(request):
@@ -18,11 +19,25 @@ def news_of_day(request):
      # FUNCTION TO CONVERT DATE OBJECT TO FIND EXACT DAY
     day = convert_dates(date)
 
-    return render(request, 'all-news/today-news.html', {"date": date,"news":news})
+    if request.method == 'POST':
+        forms = NewsLetterForm(request.POST)
+        if forms.is_valid():
+            name = form.cleaned_data['your_name']
+            email = form.cleaned_data['email']
+            recipient = NewsLetterRecipients(name = name,email =email)
+            recipient.save()
+
+            send_welcome_email(name,email)
+
+            HttpResponseRedirect('news_of_day')
+        else:
+            forms = NewsLetterForm()
+
+    return render(request, 'all-news/today-news.html', {"date": date,"news":news,"letterForm":forms})
 
 
 def convert_dates(dates):
-    
+
     # Function that gets the weekday number for the date.
     day_number = dt.date.weekday(dates)
 
@@ -37,7 +52,7 @@ def past_days_news(request,past_date):
     try:
         # Converts data from the string Url
         date = dt.datetime.strptime(past_date,'%Y-%m-%d').date()
-        day = convert_dates(date) 
+        day = convert_dates(date)
     except ValueError:
         # Raise 404 error when ValueError is thrown
         raise Http404()
@@ -51,7 +66,7 @@ def past_days_news(request,past_date):
 
 
 def search_results(request):
-    
+
     if 'article' in request.GET and request.GET["article"]:
         search_term = request.GET.get("article")
         searched_articles = Article.search_by_title(search_term)
@@ -64,6 +79,8 @@ def search_results(request):
         return render(request, 'all-news/search.html',{"message":message})
 
 
+
+@login_required(login_url='/accounts/login/')
 def article(request,article_id):
     try:
         article = Article.objects.get(id = article_id)
